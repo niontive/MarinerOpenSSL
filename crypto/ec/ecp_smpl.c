@@ -64,6 +64,9 @@ const EC_METHOD *EC_GFp_simple_method(void)
         0, /* keycopy */
         0, /* keyfinish */
         ecdh_simple_compute_key,
+        ecdsa_simple_sign_setup,
+        ecdsa_simple_sign_sig,
+        ecdsa_simple_verify_sig,
         0, /* field_inverse_mod_ord */
         ec_GFp_simple_blind_coordinates,
         ec_GFp_simple_ladder_pre,
@@ -142,6 +145,11 @@ int ec_GFp_simple_group_set_curve(EC_GROUP *group,
     /* p must be a prime > 3 */
     if (BN_num_bits(p) <= 2 || !BN_is_odd(p)) {
         ECerr(EC_F_EC_GFP_SIMPLE_GROUP_SET_CURVE, EC_R_INVALID_FIELD);
+        return 0;
+    }
+
+    if (BN_num_bits(p) < 224) {
+        ECerr(EC_F_EC_GFP_SIMPLE_GROUP_SET_CURVE, EC_R_UNSUPPORTED_FIELD);
         return 0;
     }
 

@@ -27,7 +27,7 @@ sub verify {
     run(app([@args]));
 }
 
-plan tests => 137;
+plan tests => 142;
 
 # Canonical success
 ok(verify("ee-cert", "sslserver", ["root-cert"], ["ca-cert"]),
@@ -280,6 +280,27 @@ ok(verify("ee-cert-md5", "sslserver", ["root-cert"], ["ca-cert"], "-auth_level",
 ok(!verify("ee-cert-md5", "sslserver", ["root-cert"], ["ca-cert"]),
    "reject md5 leaf at auth level 1");
 
+# Explicit vs named curve tests
+SKIP: {
+    skip "EC is not supported by this OpenSSL build", 5
+        if disabled("ec");
+    ok(verify("ee-cert-ec-explicit", "sslserver", ["root-cert"],
+               ["ca-cert-ec-named"]),
+        "accept explicit curve leaf with named curve intermediate without strict");
+    ok(verify("ee-cert-ec-named-explicit", "sslserver", ["root-cert"],
+               ["ca-cert-ec-explicit"]),
+        "accept named curve leaf with explicit curve intermediate without strict");
+    ok(!verify("ee-cert-ec-explicit", "sslserver", ["root-cert"],
+               ["ca-cert-ec-named"], "-x509_strict"),
+        "reject explicit curve leaf with named curve intermediate with strict");
+    ok(!verify("ee-cert-ec-named-explicit", "sslserver", ["root-cert"],
+               ["ca-cert-ec-explicit"], "-x509_strict"),
+        "reject named curve leaf with explicit curve intermediate with strict");
+    ok(verify("ee-cert-ec-named-named", "sslserver", ["root-cert"],
+              ["ca-cert-ec-named"], "-x509_strict"),
+        "accept named curve leaf with named curve intermediate with strict");
+}
+
 # Depth tests, note the depth limit bounds the number of CA certificates
 # between the trust-anchor and the leaf, so, for example, with a root->ca->leaf
 # chain, depth = 1 is sufficient, but depth == 0 is not.
@@ -346,8 +367,8 @@ ok(verify("ee-pss-sha1-cert", "sslserver", ["root-cert"], ["ca-cert"], ),
 ok(verify("ee-pss-sha256-cert", "sslserver", ["root-cert"], ["ca-cert"], ),
     "CA with PSS signature using SHA256");
 
-ok(!verify("ee-pss-sha1-cert", "sslserver", ["root-cert"], ["ca-cert"], "-auth_level", "2"),
-    "Reject PSS signature using SHA1 and auth level 2");
+ok(!verify("ee-pss-sha1-cert", "sslserver", ["root-cert"], ["ca-cert"], "-auth_level", "3"),
+    "Reject PSS signature using SHA1 and auth level 3");
 
 ok(verify("ee-pss-sha256-cert", "sslserver", ["root-cert"], ["ca-cert"], "-auth_level", "2"),
     "PSS signature using SHA256 and auth level 2");

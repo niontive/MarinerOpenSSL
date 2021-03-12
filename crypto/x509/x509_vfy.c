@@ -80,6 +80,7 @@ static int get_issuer_sk(X509 **issuer, X509_STORE_CTX *ctx, X509 *x);
 static int check_dane_issuer(X509_STORE_CTX *ctx, int depth);
 static int check_key_level(X509_STORE_CTX *ctx, X509 *cert);
 static int check_sig_level(X509_STORE_CTX *ctx, X509 *cert);
+static int check_curve(X509 *cert);
 
 static int get_crl_score(X509_STORE_CTX *ctx, X509 **pissuer,
                          unsigned int *preasons, X509_CRL *crl, X509 *x);
@@ -507,6 +508,14 @@ static int check_chain_extensions(X509_STORE_CTX *ctx)
             } else
                 ret = 1;
             break;
+        }
+        if ((ctx->param->flags & X509_V_FLAG_X509_STRICT) && num > 1) {
+            /* Check for presence of explicit elliptic curve parameters */
+            ret = check_curve(x);
+            if (ret < 0)
+                ctx->error = X509_V_ERR_UNSPECIFIED;
+            else if (ret == 0)
+                ctx->error = X509_V_ERR_EC_KEY_EXPLICIT_PARAMS;
         }
         if ((x->ex_flags & EXFLAG_CA) == 0
             && x->ex_pathlen != -1
@@ -3225,6 +3234,7 @@ static int build_chain(X509_STORE_CTX *ctx)
 }
 
 static const int minbits_table[] = { 80, 112, 128, 192, 256 };
+static const int minbits_digest_table[] = { 80, 80, 128, 192, 256 };
 static const int NUM_AUTH_LEVELS = OSSL_NELEM(minbits_table);
 
 /*
@@ -3258,6 +3268,32 @@ static int check_key_level(X509_STORE_CTX *ctx, X509 *cert)
 }
 
 /*
+ * Check whether the public key of ``cert`` does not use explicit params
+ * for an elliptic curve.
+ *
+ * Returns 1 on success, 0 if check fails, -1 for other errors.
+ */
+static int check_curve(X509 *cert)
+{
+#ifndef OPENSSL_NO_EC
+    EVP_PKEY *pkey = X509_get0_pubkey(cert);
+
+    /* Unsupported or malformed key */
+    if (pkey == NULL)
+        return -1;
+
+    if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {
+        int ret;
+
+        ret = EC_KEY_decoded_from_explicit_params(EVP_PKEY_get0_EC_KEY(pkey));
+        return ret < 0 ? ret : !ret;
+    }
+#endif
+
+    return 1;
+}
+
+/*
  * Check whether the signature digest algorithm of ``cert`` meets the security
  * level of ``ctx``.  Should not be checked for trust anchors (whether
  * self-signed or otherwise).
@@ -3276,6 +3312,11 @@ static int check_sig_level(X509_STORE_CTX *ctx, X509 *cert)
 
     if (!X509_get_signature_info(cert, NULL, NULL, &secbits, NULL))
         return 0;
-
-    return secbits >= minbits_table[level - 1];
+    /*
+     * Allow SHA1 in SECLEVEL 2 in non-FIPS mode or when the magic
+     * disable SHA1 flag is not set.
+     */
+    if ((ctx->param->flags & 0x40000000) || FIPS_mode())
+        return secbits >= minbits_table[level - 1];
+    return secbits >= minbits_digest_table[level - 1];
 }

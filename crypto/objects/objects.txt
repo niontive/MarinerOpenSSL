@@ -1600,6 +1600,18 @@ secg-scheme 14 3 : dhSinglePass-cofactorDH-sha512kdf-scheme
 # NID for HKDF
                             : HKDF              : hkdf
 
+# NID for SSHKDF
+                            : SSHKDF            : sshkdf
+
+# NID for KBKDF
+                            : KBKDF             : kbkdf
+
+# NID for KRB5KDF
+                            : KRB5KDF           : krb5kdf
+
+# NID for SSKDF
+                            : SSKDF              : sskdf
+
 # RFC 4556
 1 3 6 1 5 2 3 : id-pkinit
 id-pkinit 4                     : pkInitClientAuth      : PKINIT Client Auth
@@ -1645,6 +1657,13 @@ id-pkinit 5                     : pkInitKDC             : Signing KDC Response
                             : ffdhe4096
                             : ffdhe6144
                             : ffdhe8192
+# NIDs for RFC3526 DH parameters
+                            : modp_1536
+                            : modp_2048
+                            : modp_3072
+                            : modp_4096
+                            : modp_6144
+                            : modp_8192
 
 # OIDs for DSTU-4145/DSTU-7564 (http://zakon2.rada.gov.ua/laws/show/z0423-17)
 

@@ -16,6 +16,9 @@
 #include "internal/cryptlib.h"
 #include <openssl/bn.h>
 #include "dh_local.h"
+#ifdef OPENSSL_FIPS
+# include <openssl/fips.h>
+#endif
 
 static int dh_builtin_genparams(DH *ret, int prime_len, int generator,
                                 BN_GENCB *cb);
@@ -23,6 +26,12 @@ static int dh_builtin_genparams(DH *ret, int prime_len, int generator,
 int DH_generate_parameters_ex(DH *ret, int prime_len, int generator,
                               BN_GENCB *cb)
 {
+#ifdef OPENSSL_FIPS
+    if (FIPS_mode()) {
+        DHerr(DH_F_DH_GENERATE_PARAMETERS_EX, DH_R_NON_FIPS_METHOD);
+        return 0;
+    }
+#endif
     if (ret->meth->generate_params)
         return ret->meth->generate_params(ret, prime_len, generator, cb);
     return dh_builtin_genparams(ret, prime_len, generator, cb);

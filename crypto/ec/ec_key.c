@@ -178,14 +178,62 @@ ENGINE *EC_KEY_get0_engine(const EC_KEY *eckey)
     return eckey->engine;
 }
 
+#ifdef OPENSSL_FIPS
+
+# include <openssl/fips.h>
+# include "crypto/fips.h"
+
+static int fips_check_ec(EC_KEY *key)
+{
+    EVP_PKEY *pk;
+    unsigned char tbs[] = "ECDSA Pairwise Check Data";
+    int ret = 0;
+
+    if (!EC_KEY_can_sign(key)) /* no test for non-signing keys */
+        return 1;
+
+    if ((pk = EVP_PKEY_new()) == NULL)
+        goto err;
+
+    EVP_PKEY_set1_EC_KEY(pk, key);
+
+    if (fips_pkey_signature_test(pk, tbs, -1, NULL, 0, NULL, 0, NULL))
+        ret = 1;
+
+ err:
+    if (ret == 0) {
+        FIPSerr(FIPS_F_FIPS_CHECK_EC, FIPS_R_PAIRWISE_TEST_FAILED);
+        fips_set_selftest_fail();
+    }
+    if (pk)
+        EVP_PKEY_free(pk);
+    return ret;
+}
+
+#endif
+
 int EC_KEY_generate_key(EC_KEY *eckey)
 {
+#ifdef OPENSSL_FIPS
+    if (FIPS_selftest_failed()) {
+        ECerr(EC_F_EC_KEY_GENERATE_KEY, EC_R_NOT_INITIALIZED);
+        return 0;
+    }
+#endif
     if (eckey == NULL || eckey->group == NULL) {
         ECerr(EC_F_EC_KEY_GENERATE_KEY, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
-    if (eckey->meth->keygen != NULL)
-        return eckey->meth->keygen(eckey);
+    if (eckey->meth->keygen != NULL) {
+        int rv = eckey->meth->keygen(eckey);
+
+#ifdef OPENSSL_FIPS
+        if (rv > 0 && FIPS_mode()) {
+            rv = fips_check_ec(eckey);
+        }
+#endif
+        return rv;
+    }
     ECerr(EC_F_EC_KEY_GENERATE_KEY, EC_R_OPERATION_NOT_SUPPORTED);
     return 0;
 }
@@ -232,8 +280,17 @@ int ec_key_simple_generate_key(EC_KEY *eckey)
     if (!EC_POINT_mul(eckey->group, pub_key, priv_key, NULL, NULL, ctx))
         goto err;
 
-    eckey->priv_key = priv_key;
     eckey->pub_key = pub_key;
+
+    if (FIPS_mode()) {
+        eckey->priv_key = NULL;
+        if (EC_KEY_check_key(eckey) <= 0) {
+            eckey->pub_key = NULL;
+            goto err;
+        }
+    }
+
+    eckey->priv_key = priv_key;
 
     ok = 1;
 
@@ -248,8 +305,23 @@ int ec_key_simple_generate_key(EC_KEY *eckey)
 
 int ec_key_simple_generate_public_key(EC_KEY *eckey)
 {
-    return EC_POINT_mul(eckey->group, eckey->pub_key, eckey->priv_key, NULL,
+    BIGNUM *priv_key;
+    int ret = EC_POINT_mul(eckey->group, eckey->pub_key, eckey->priv_key, NULL,
                         NULL, NULL);
+
+    if (ret <= 0 || !FIPS_mode())
+        return ret;
+
+    /* no need to perform private key test, temporarily hide it */
+    priv_key = eckey->priv_key;
+    eckey->priv_key = NULL;
+    ret = EC_KEY_check_key(eckey);
+    eckey->priv_key = priv_key;
+
+    if (ret <= 0)
+        EC_POINT_set_to_infinity(eckey->group, eckey->pub_key);
+
+    return ret;
 }
 
 int EC_KEY_check_key(const EC_KEY *eckey)
@@ -492,6 +564,13 @@ void EC_KEY_set_flags(EC_KEY *key, int flags)
 void EC_KEY_clear_flags(EC_KEY *key, int flags)
 {
     key->flags &= ~flags;
+}
+
+int EC_KEY_decoded_from_explicit_params(const EC_KEY *key)
+{
+    if (key == NULL || key->group == NULL)
+        return -1;
+    return key->group->decoded_from_explicit_params;
 }
 
 size_t EC_KEY_key2buf(const EC_KEY *key, point_conversion_form_t form,

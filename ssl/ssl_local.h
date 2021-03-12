@@ -1516,6 +1516,7 @@ typedef struct tls_group_info_st {
 # define TLS_CURVE_PRIME         0x0
 # define TLS_CURVE_CHAR2         0x1
 # define TLS_CURVE_CUSTOM        0x2
+# define TLS_CURVE_FIPS          0x80
 
 typedef struct cert_pkey_st CERT_PKEY;
 
@@ -2575,6 +2576,7 @@ __owur int tls1_save_sigalgs(SSL *s, PACKET *pkt, int cert);
 __owur int tls1_process_sigalgs(SSL *s);
 __owur int tls1_set_peer_legacy_sigalg(SSL *s, const EVP_PKEY *pkey);
 __owur int tls1_lookup_md(const SIGALG_LOOKUP *lu, const EVP_MD **pmd);
+int tls1_cert_sigalgs_have_sha1(const CERT *c);
 __owur size_t tls12_get_psigalgs(SSL *s, int sent, const uint16_t **psigs);
 #  ifndef OPENSSL_NO_EC
 __owur int tls_check_sigalg_curve(const SSL *s, int curve);

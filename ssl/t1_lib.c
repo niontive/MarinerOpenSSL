@@ -159,11 +159,11 @@ static const TLS_GROUP_INFO nid_list[] = {
     {NID_secp192k1, 80, TLS_CURVE_PRIME}, /* secp192k1 (18) */
     {NID_X9_62_prime192v1, 80, TLS_CURVE_PRIME}, /* secp192r1 (19) */
     {NID_secp224k1, 112, TLS_CURVE_PRIME}, /* secp224k1 (20) */
-    {NID_secp224r1, 112, TLS_CURVE_PRIME}, /* secp224r1 (21) */
+    {NID_secp224r1, 112, TLS_CURVE_PRIME | TLS_CURVE_FIPS}, /* secp224r1 (21) */
     {NID_secp256k1, 128, TLS_CURVE_PRIME}, /* secp256k1 (22) */
-    {NID_X9_62_prime256v1, 128, TLS_CURVE_PRIME}, /* secp256r1 (23) */
-    {NID_secp384r1, 192, TLS_CURVE_PRIME}, /* secp384r1 (24) */
-    {NID_secp521r1, 256, TLS_CURVE_PRIME}, /* secp521r1 (25) */
+    {NID_X9_62_prime256v1, 128, TLS_CURVE_PRIME | TLS_CURVE_FIPS}, /* secp256r1 (23) */
+    {NID_secp384r1, 192, TLS_CURVE_PRIME | TLS_CURVE_FIPS}, /* secp384r1 (24) */
+    {NID_secp521r1, 256, TLS_CURVE_PRIME | TLS_CURVE_FIPS}, /* secp521r1 (25) */
     {NID_brainpoolP256r1, 128, TLS_CURVE_PRIME}, /* brainpoolP256r1 (26) */
     {NID_brainpoolP384r1, 192, TLS_CURVE_PRIME}, /* brainpoolP384r1 (27) */
     {NID_brainpoolP512r1, 256, TLS_CURVE_PRIME}, /* brainpool512r1 (28) */
@@ -258,6 +258,8 @@ int tls_curve_allowed(SSL *s, uint16_t curve, int op)
     if (cinfo->flags & TLS_CURVE_CHAR2)
         return 0;
 # endif
+    if (FIPS_mode() && !(cinfo->flags & TLS_CURVE_FIPS))
+        return 0;
     ctmp[0] = curve >> 8;
     ctmp[1] = curve & 0xff;
     return ssl_security(s, op, cinfo->secbits, cinfo->nid, (void *)ctmp);
@@ -676,6 +678,36 @@ static const uint16_t tls12_sigalgs[] = {
 #endif
 };
 
+static const uint16_t tls12_fips_sigalgs[] = {
+#ifndef OPENSSL_NO_EC
+    TLSEXT_SIGALG_ecdsa_secp256r1_sha256,
+    TLSEXT_SIGALG_ecdsa_secp384r1_sha384,
+    TLSEXT_SIGALG_ecdsa_secp521r1_sha512,
+#endif
+
+    TLSEXT_SIGALG_rsa_pss_pss_sha256,
+    TLSEXT_SIGALG_rsa_pss_pss_sha384,
+    TLSEXT_SIGALG_rsa_pss_pss_sha512,
+    TLSEXT_SIGALG_rsa_pss_rsae_sha256,
+    TLSEXT_SIGALG_rsa_pss_rsae_sha384,
+    TLSEXT_SIGALG_rsa_pss_rsae_sha512,
+
+    TLSEXT_SIGALG_rsa_pkcs1_sha256,
+    TLSEXT_SIGALG_rsa_pkcs1_sha384,
+    TLSEXT_SIGALG_rsa_pkcs1_sha512,
+
+#ifndef OPENSSL_NO_EC
+    TLSEXT_SIGALG_ecdsa_sha224,
+#endif
+    TLSEXT_SIGALG_rsa_pkcs1_sha224,
+#ifndef OPENSSL_NO_DSA
+    TLSEXT_SIGALG_dsa_sha224,
+    TLSEXT_SIGALG_dsa_sha256,
+    TLSEXT_SIGALG_dsa_sha384,
+    TLSEXT_SIGALG_dsa_sha512,
+#endif
+};
+
 #ifndef OPENSSL_NO_EC
 static const uint16_t suiteb_sigalgs[] = {
     TLSEXT_SIGALG_ecdsa_secp256r1_sha256,
@@ -892,6 +924,8 @@ static const SIGALG_LOOKUP *tls1_get_legacy_sigalg(const SSL *s, int idx)
     }
     if (idx < 0 || idx >= (int)OSSL_NELEM(tls_default_sigalg))
         return NULL;
+    if (FIPS_mode()) /* We do not allow legacy SHA1 signatures in FIPS mode */
+        return NULL;
     if (SSL_USE_SIGALGS(s) || idx != SSL_PKEY_RSA) {
         const SIGALG_LOOKUP *lu = tls1_lookup_sigalg(tls_default_sigalg[idx]);
 
@@ -952,6 +986,9 @@ size_t tls12_get_psigalgs(SSL *s, int sent, const uint16_t **psigs)
     } else if (s->cert->conf_sigalgs) {
         *psigs = s->cert->conf_sigalgs;
         return s->cert->conf_sigalgslen;
+    } else if (FIPS_mode()) {
+        *psigs = tls12_fips_sigalgs;
+        return OSSL_NELEM(tls12_fips_sigalgs);
     } else {
         *psigs = tls12_sigalgs;
         return OSSL_NELEM(tls12_sigalgs);
@@ -971,6 +1008,9 @@ int tls_check_sigalg_curve(const SSL *s, int curve)
     if (s->cert->conf_sigalgs) {
         sigs = s->cert->conf_sigalgs;
         siglen = s->cert->conf_sigalgslen;
+    } else if (FIPS_mode()) {
+        sigs = tls12_fips_sigalgs;
+        siglen = OSSL_NELEM(tls12_fips_sigalgs);
     } else {
         sigs = tls12_sigalgs;
         siglen = OSSL_NELEM(tls12_sigalgs);
@@ -1615,6 +1655,8 @@ static int tls12_sigalg_allowed(const SSL *s, int op, const SIGALG_LOOKUP *lu)
     if (lu->sig == NID_id_GostR3410_2012_256
             || lu->sig == NID_id_GostR3410_2012_512
             || lu->sig == NID_id_GostR3410_2001) {
+        if (FIPS_mode())
+            return 0;
         /* We never allow GOST sig algs on the server with TLSv1.3 */
         if (s->server && SSL_IS_TLS13(s))
             return 0;
@@ -2103,6 +2145,36 @@ int tls1_set_sigalgs(CERT *c, const int *psig_nids, size_t salglen, int client)
     return 0;
 }
 
+static int tls1_sigalgs_have_sha1(const uint16_t *sigalgs, size_t sigalgslen)
+{
+    size_t i;
+
+    for (i = 0; i < sigalgslen; i++, sigalgs++) {
+        const SIGALG_LOOKUP *lu = tls1_lookup_sigalg(*sigalgs);
+
+        if (lu == NULL)
+            continue;
+        if (lu->hash == NID_sha1)
+            return 1;
+    }
+    return 0;
+}
+
+
+int tls1_cert_sigalgs_have_sha1(const CERT *c)
+{
+    if (c->client_sigalgs != NULL) {
+        if (tls1_sigalgs_have_sha1(c->client_sigalgs, c->client_sigalgslen))
+            return 1;
+    }
+    if (c->conf_sigalgs != NULL) {
+        if (tls1_sigalgs_have_sha1(c->conf_sigalgs, c->conf_sigalgslen))
+            return 1;
+        return 0;
+    }
+    return 1;
+}
+
 static int tls1_check_sig_alg(SSL *s, X509 *x, int default_nid)
 {
     int sig_nid, use_pc_sigalgs = 0;
@@ -2439,46 +2511,48 @@ int SSL_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain)
 #ifndef OPENSSL_NO_DH
 DH *ssl_get_auto_dh(SSL *s)
 {
+    DH *dhp = NULL;
+    BIGNUM *p = NULL, *g = NULL;
     int dh_secbits = 80;
-    if (s->cert->dh_tmp_auto == 2)
-        return DH_get_1024_160();
-    if (s->s3->tmp.new_cipher->algorithm_auth & (SSL_aNULL | SSL_aPSK)) {
-        if (s->s3->tmp.new_cipher->strength_bits == 256)
-            dh_secbits = 128;
-        else
-            dh_secbits = 80;
-    } else {
-        if (s->s3->tmp.cert == NULL)
-            return NULL;
-        dh_secbits = EVP_PKEY_security_bits(s->s3->tmp.cert->privatekey);
+    if (s->cert->dh_tmp_auto != 2) {
+        if (s->s3->tmp.new_cipher->algorithm_auth & (SSL_aNULL | SSL_aPSK)) {
+            if (s->s3->tmp.new_cipher->strength_bits == 256)
+                dh_secbits = 128;
+            else
+                dh_secbits = 80;
+        } else {
+            if (s->s3->tmp.cert == NULL)
+                return NULL;
+            dh_secbits = EVP_PKEY_security_bits(s->s3->tmp.cert->privatekey);
+        }
     }
 
-    if (dh_secbits >= 128) {
-        DH *dhp = DH_new();
-        BIGNUM *p, *g;
-        if (dhp == NULL)
-            return NULL;
-        g = BN_new();
-        if (g == NULL || !BN_set_word(g, 2)) {
-            DH_free(dhp);
-            BN_free(g);
-            return NULL;
-        }
-        if (dh_secbits >= 192)
-            p = BN_get_rfc3526_prime_8192(NULL);
-        else
-            p = BN_get_rfc3526_prime_3072(NULL);
-        if (p == NULL || !DH_set0_pqg(dhp, p, NULL, g)) {
-            DH_free(dhp);
-            BN_free(p);
-            BN_free(g);
-            return NULL;
-        }
-        return dhp;
+    dhp = DH_new();
+    if (dhp == NULL)
+        return NULL;
+    g = BN_new();
+    if (g == NULL || !BN_set_word(g, 2)) {
+        DH_free(dhp);
+        BN_free(g);
+        return NULL;
     }
-    if (dh_secbits >= 112)
-        return DH_get_2048_224();
-    return DH_get_1024_160();
+    if (dh_secbits >= 192)
+        p = BN_get_rfc3526_prime_8192(NULL);
+    else if (dh_secbits >= 152)
+        p = BN_get_rfc3526_prime_4096(NULL);
+    else if (dh_secbits >= 128)
+        p = BN_get_rfc3526_prime_3072(NULL);
+    else if (dh_secbits >= 112 || FIPS_mode())
+        p = BN_get_rfc3526_prime_2048(NULL);
+    else
+        p = BN_get_rfc2409_prime_1024(NULL);
+    if (p == NULL || !DH_set0_pqg(dhp, p, NULL, g)) {
+        DH_free(dhp);
+        BN_free(p);
+        BN_free(g);
+        return NULL;
+    }
+    return dhp;
 }
 #endif
 
@@ -2840,6 +2914,13 @@ int tls_choose_sigalg(SSL *s, int fatalerrs)
                 const uint16_t *sent_sigs;
                 size_t sent_sigslen;
 
+                if (fatalerrs && FIPS_mode()) {
+                    /* There are no suitable legacy algorithms in FIPS mode */
+                    SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+                             SSL_F_TLS_CHOOSE_SIGALG,
+                             SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM);
+                    return 0;
+                }
                 if ((lu = tls1_get_legacy_sigalg(s, -1)) == NULL) {
                     if (!fatalerrs)
                         return 1;
