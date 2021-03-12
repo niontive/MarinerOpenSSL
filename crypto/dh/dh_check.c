@@ -43,6 +43,10 @@ int DH_check_params(const DH *dh, int *ret)
     BN_CTX *ctx = NULL;
 
     if (FIPS_mode()) {
+        /*
+        * SP800-56A R3 Section 5.5.2 Assurances of Domain Parameter Validity
+        * (1a) The domain parameters correspond to any approved safe prime group.
+        */
         int nid = dh->nid == NID_undef ? DH_get_nid(dh) : dh->nid;
 
         return nid != NID_undef;

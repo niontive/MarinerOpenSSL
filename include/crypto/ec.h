@@ -49,5 +49,9 @@ int ecdh_KDF_X9_63(unsigned char *out, size_t outlen,
                    const unsigned char *sinfo, size_t sinfolen,
                    const EVP_MD *md);
 
+int ossl_ec_key_public_check(const EC_KEY *eckey, BN_CTX *ctx);
+int ec_key_private_check(const EC_KEY *eckey);
+int ec_key_pairwise_check(const EC_KEY *eckey, BN_CTX *ctx);
+
 # endif /* OPENSSL_NO_EC */
 #endif

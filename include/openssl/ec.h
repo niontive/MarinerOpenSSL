@@ -416,6 +416,8 @@ size_t EC_get_builtin_curves(EC_builtin_curve *r, size_t nitems);
 
 const char *EC_curve_nid2nist(int nid);
 int EC_curve_nist2nid(const char *name);
+int EC_GROUP_check_named_curve(const EC_GROUP *group, int nist_only,
+                               BN_CTX *ctx);
 
 /********************************************************************/
 /*                    EC_POINT functions                            */

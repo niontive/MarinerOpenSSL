@@ -23,7 +23,8 @@ declare -a cblPatches=("CVE-2019-0190.nopatch"
                        "openssl-1.1.1-rewire-fips-drbg.patch"
                        "openssl-1.1.1-explicit-params.patch"
                        "openssl-1.1.1-fips-curves.patch"
-                       "CVE-2020-1971.patch")
+                       "CVE-2020-1971.patch"
+                       "openssl-1.1.1-sp80056arev3.patch")
 
 for i in "${cblPatches[@]}"
 do
