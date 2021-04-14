@@ -454,6 +454,14 @@ int FIPS_module_mode_set(int onoff)
 
         fips_post = 1;
 
+        if (!FIPS_init_entropy()) {
+            FIPSerr(FIPS_F_FIPS_MODULE_MODE_SET,
+                    FIPS_R_ENTROPY_INIT_FAILED);
+            fips_selftest_fail = 1;
+            ret = 0;
+            goto end;
+        }
+
         if (!FIPS_selftest()) {
             fips_selftest_fail = 1;
             ret = 0;

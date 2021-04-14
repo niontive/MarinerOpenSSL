@@ -639,7 +639,11 @@ size_t rand_pool_acquire_entropy(RAND_POOL *pool)
         bytes_needed = rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
         while (bytes_needed != 0 && attempts-- > 0) {
             buffer = rand_pool_add_begin(pool, bytes_needed);
+#ifdef OPENSSL_FIPS
+            bytes = FIPS_jitter_entropy(buffer, bytes_needed);
+#else
             bytes = syscall_random(buffer, bytes_needed, in_post);
+#endif
             if (bytes > 0) {
                 rand_pool_add_end(pool, bytes, 8 * bytes);
                 bytes_needed -= bytes;

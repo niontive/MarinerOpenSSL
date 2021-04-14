@@ -94,6 +94,8 @@ void fips_set_selftest_fail(void);
 
 void FIPS_get_timevec(unsigned char *buf, unsigned long *pctr);
 
+ssize_t FIPS_jitter_entropy(unsigned char *buf, size_t buflen);
+
 #else
 
 # define fips_in_post() 0
