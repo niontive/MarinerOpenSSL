@@ -35,7 +35,7 @@ ssize_t FIPS_jitter_entropy(unsigned char *buf, size_t buflen)
     }
 
     /* Allocate entropy collector */
-    ec = jent_entropy_collector_alloc(1, JENT_FORCE_FIPS);
+    ec = jent_entropy_collector_alloc(1, 1<<5);
     if (ec == NULL) {
         goto end;
     }
