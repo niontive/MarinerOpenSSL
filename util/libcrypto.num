@@ -4632,3 +4632,4 @@ EVP_KDF_ctrl_str                        6595	1_1_1b	EXIST::FUNCTION:
 EVP_KDF_size                            6596	1_1_1b	EXIST::FUNCTION:
 EVP_KDF_derive                          6597	1_1_1b	EXIST::FUNCTION:
 EC_GROUP_check_named_curve              1563	1_1_1g	EXIST::FUNCTION:EC
+FIPS_init_entropy                       6598    1_1_1k  EXIST::FUNCTION:
