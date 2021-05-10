@@ -637,13 +637,15 @@ size_t rand_pool_acquire_entropy(RAND_POOL *pool)
         int attempts = 3;
 
         bytes_needed = rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
+#ifdef OPENSSL_FIPS
+        if (FIPS_mode()) {
+            /* Use getrandom() for half the entropy */
+            bytes_needed = bytes_needed / 2;
+        }
+#endif
         while (bytes_needed != 0 && attempts-- > 0) {
             buffer = rand_pool_add_begin(pool, bytes_needed);
-#ifdef OPENSSL_FIPS
-            bytes = FIPS_jitter_entropy(buffer, bytes_needed);
-#else
             bytes = syscall_random(buffer, bytes_needed, in_post);
-#endif
             if (bytes > 0) {
                 rand_pool_add_end(pool, bytes, 8 * bytes);
                 bytes_needed -= bytes;
@@ -652,6 +654,24 @@ size_t rand_pool_acquire_entropy(RAND_POOL *pool)
                 break;
             }
         }
+#ifdef OPENSSL_FIPS
+        if (FIPS_mode()) {
+            /* Use jent to fill entropy pool */
+            bytes_needed = rand_pool_bytes_needed();
+            attempts = 3;
+            while (bytes_needed !=0 && attempts-- > 0) {
+                buffer = rand_pool_add_begin(pool, bytes_needed);
+                bytes = FIPS_jitter_entropy(buffer, bytes_needed);
+                if (bytes > 0) {
+                    rand_pool_add_end(pool, bytes, 8 * bytes);
+                    bytes_needed -= bytes;
+                    attempts = 3; /* reset counter after successful attempt */
+                } else if (bytes < 0 && errno != EINTR) {
+                    break;
+                }
+            }
+        }
+#endif
     }
     entropy_available = rand_pool_entropy_available(pool);
     if (entropy_available > 0)
